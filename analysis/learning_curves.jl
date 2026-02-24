@@ -8,13 +8,13 @@ include("preprocessing.jl")
     ρ₀ ~ Beta()
     ρ₁ ~ Beta()    
     pmax ~ Beta()  
-    βi ~ MvLogNormal(4, 1.0)
+    βi ~ MvLogNormal(5, 1.0)
     
     pmin₀ = ρ₀
     pmin₁ = ρ₁
     for i in eachindex(X)
-        β = min(50.0, βi[C[i]])#50 * logistic(logβ[C[i]])
-        pmin = C[i] < 4 ? pmin₀ : pmin₁
+        β = min(50.0, βi[C[i]])
+        pmin = C[i] < 5 ? pmin₀ : pmin₁
         P = pmin + (pmax - pmin) * (1 - exp(- β * (X[i]-1)))
         if !(zero(P) <= P <= one(P))
             @show P
@@ -40,7 +40,7 @@ end
     pmin₂ = ρ₂
     pmin₃ = ρ₃
     for i in eachindex(X)
-        β = min(50.0, βi[C[i]])#50 * logistic(logβ[C[i]])
+        β = min(50.0, βi[C[i]])
         if C[i] < 4
             pmin = pmin₀
         elseif C[i] == 4
@@ -107,11 +107,11 @@ end
 # end
 
 # Simu : 
-model = "SI_MultVol_SampleAction"
+model = "optimal_local_mem_vol_modif_mem2"
 task = 1
 tasknames = ["WMM1", "WMM2"]
 
-pathname = string("WMM/Simus/", model, "_", tasknames[task])
+pathname = string("../../Model_Tasks_Data/Data/WMM/Simus/all_simus/Simus/", model, "_", tasknames[task])
 fileslist = filter(x -> occursin(".csv", x), readdir(pathname))
 df = DataFrame()
 
@@ -134,10 +134,10 @@ envdf = groupby(df, :task)
 ## Environment 1 
 df_env1 = DataFrame(envdf[[en.task[1] == "WMM1" for en in envdf]])
 df_env1 = df_env1[df_env1.condition .> 0,:] # Remove condition 0 (starting blocks)
-df_env1.condition[df_env1.condition .== 4] .= 1
+#df_env1.condition[df_env1.condition .== 4] .= 1
 for t = 1:nrow(df_env1)
     if df_env1[t, Symbol("isStable_$(df_env1.stimulus[t])")] && df_env1.condition[t] > 0
-        df_env1.condition[t] = 4 # Make stable stims a special condition
+        df_env1.condition[t] = 5 # Make stable stims a special condition
     end
 end
 
@@ -149,7 +149,7 @@ gdf = groupby(df_env1, :subject)
 function fit_learning_curve_WMM1(gdf)
     N = length(gdf)
 
-    fit_results = DataFrame(subject = zeros(Int, N), pmin₀ = zeros(N), pmin₁ = zeros(N), pmax = zeros(N), beta_1 = zeros(N), beta_2 = zeros(N), beta_3 = zeros(N), beta_4 = zeros(N), rec_effect = zeros(N), part_effect = zeros(N), stable_effect = zeros(N), converged = falses(N))
+    fit_results = DataFrame(subject = zeros(Int, N), pmin₀ = zeros(N), pmin₁ = zeros(N), pmax = zeros(N), beta_1 = zeros(N), beta_2 = zeros(N), beta_3 = zeros(N), beta_4 = zeros(N), beta_5 = zeros(N), rec_effect = zeros(N), part_effect = zeros(N), stable_effect = zeros(N), converged = falses(N))
 
     wb = Progress(N, 1, "fitting....")
     for gi in 1:N
@@ -167,13 +167,13 @@ function fit_learning_curve_WMM1(gdf)
         res = (ρ₀ = mean(logit.(nt.ρ₀)), 
         ρ₁ = mean(logit.(nt.ρ₁)),
         pmax = mean(logit.(nt.pmax)),
-        βi = [mean(log.(nt.βi[i])) for i = 1:4])
+        βi = [mean(log.(nt.βi[i])) for i in eachindex(nt.βi)])
         
         fit_results[gi, :subject] = g.subject[1]
         fit_results[gi, :pmin₀] = res[:ρ₀]
         fit_results[gi, :pmin₁] = res[:ρ₁]
         fit_results[gi, :pmax] = res[:pmax]
-        for j = 1:4
+        for j = 1:5
             fit_results[gi, Symbol("beta_$j")] = res[:βi][j]#res[Symbol("βi[$j]")]
         end
         fit_results[gi, :converged] = all(ess_rhat(chn).nt.rhat .< 1.05)
@@ -340,20 +340,26 @@ end
 fit_results = fit_learning_curve_FU(gdf)
 
 ## Figures
-# df = CSV.read("WMM/learning_curves_data_WMM1.csv", DataFrame)
-#df2 = CSV.read("WMM/learning_curves_data_WMM2.csv", DataFrame)
-#df3 = CSV.read("WMM/learning_curves_data_FU2.csv", DataFrame)
-#df4 = CSV.read("WMM/learning_curves_data_FU3.csv", DataFrame)
-# df2 = CSV.read("WMM/Simus/learning_curves_adaptive_alpha.csv", DataFrame)
-# df3 = CSV.read("WMM/Simus/learning_curves_adaptive_beta.csv", DataFrame)
-df_data1 = CSV.read("WMM/learning_curves_data_FU1.csv", DataFrame)
-df_data2 = CSV.read("WMM/learning_curves_data_FU2.csv", DataFrame)
-df_data3 = CSV.read("WMM/learning_curves_data_FU3.csv", DataFrame)
-#df_model = CSV.read("WMM/Simus/learning_curves_full_adaptive_cfql2.csv", DataFrame)
-# df_model = CSV.read("WMM/Simus/learning_curves_probe_LRRel.csv", DataFrame)
-#df_model = CSV.read("WMM/Simus/learning_curves_SI_MultVol_SampleAction.csv", DataFrame)
+model = "optimal_local_mem_vol"
+df_model = CSV.read("/Users/sami/PhD/Model_Tasks_Data/Data/WMM/Simus/learning_curves_$(model).csv", DataFrame)
+
+df_data = CSV.read("/Users/sami/PhD/Model_Tasks_Data/Data/WMM/learning_curves_data_WMM1.csv", DataFrame)
 
 ## Basal learning speed and recurrence
+simu_m = [mean(exp.(df_model.beta_1)), mean(exp.(df_model.beta_2 )), mean(exp.(df_model.beta_3 )), mean(exp.(df_model.beta_4))]
+simu_s = [std(exp.(df_model.beta_1))/sqrt(51), std(exp.(df_model.beta_2 ))/sqrt(51), std(exp.(df_model.beta_3 ))/sqrt(51), std(exp.(df_model.beta_4))/sqrt(51)]
+
+scatter([1], [simu_m[1]], yerror=[simu_s[1]], markersize=20, color=:white, msw=10, msc = StatsPlots.palette(:Dark2)[1], label="")
+scatter!([1.7], [simu_m[2]], yerror=[simu_s[2]], markersize=20, color=:white, msw=10, msc = StatsPlots.palette(:Dark2)[2], label="")
+
+data_m = [mean(exp.(df_data.beta_1)), mean(exp.(df_data.beta_2 )), mean(exp.(df_data.beta_3 )), mean(exp.(df_data.beta_4 ))]
+data_s = [std(exp.(df_data.beta_1))/sqrt(51), std(exp.(df_data.beta_2 ))/sqrt(51), std(exp.(df_data.beta_3 ))/sqrt(51), std(exp.(df_data.beta_4 ))/sqrt(51)]
+
+scatter!([0.8], [data_m[1]], yerror=[data_s[1]], markersize=20, color=StatsPlots.palette(:Dark2)[1], msw=10, msc = StatsPlots.palette(:Dark2)[1], label="")
+scatter!([1.5], [data_m[2]], yerror=[data_s[2]], markersize=20, color=StatsPlots.palette(:Dark2)[2], msw=10, msc = StatsPlots.palette(:Dark2)[2], label="", xaxis=:off, xticks=[], xlims=(0.6, 1.9), ylims=(0.39, 0.74),ylabel="Learning speed", labelfontsize=32, tickfontsize = 14, background_color=:transparent, foreground_color=:black, size=(500, 500), dpi=300)
+
+
+## Interference (stable)
 simu_m = [mean(exp.(df_model.beta_1)), mean(exp.(df_model.beta_2 )), mean(exp.(df_model.beta_3 ))]
 simu_s = [std(exp.(df_model.beta_1))/sqrt(51), std(exp.(df_model.beta_2 ))/sqrt(51), std(exp.(df_model.beta_3 ))/sqrt(51)]
 
@@ -365,12 +371,6 @@ data_s = [std(exp.(df_data.beta_1))/sqrt(51), std(exp.(df_data.beta_2 ))/sqrt(51
 
 scatter!([0.8], [data_m[1]], yerror=[data_s[1]], markersize=20, color=StatsPlots.palette(:Dark2)[1], msw=10, msc = StatsPlots.palette(:Dark2)[1], label="")
 scatter!([1.5], [data_m[2]], yerror=[data_s[2]], markersize=20, color=StatsPlots.palette(:Dark2)[2], msw=10, msc = StatsPlots.palette(:Dark2)[2], label="", xaxis=:off, xticks=[], xlims=(0.6, 1.9), ylims=(0.39, 0.74),ylabel="Learning speed", labelfontsize=32, tickfontsize = 14, background_color=:transparent, foreground_color=:black, size=(500, 500), dpi=300)
-
-
-## Interference (changing)
-bar([mean( (exp.(df_model.beta_1))) mean( (exp.(df_model.beta_3)) )  ], alpha=1)
-
-#scatter!([1], [mean( (exp.(df_data.beta_3) .- exp.(df_data.beta_1 ))  )])
 
 ##
 V = log.(df.beta_2 ./ df.beta_1)

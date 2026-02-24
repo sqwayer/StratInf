@@ -115,7 +115,17 @@ function grp_plot_hmm(grpstats, stat="persev", cols=eachindex(unique(grpstats.co
         @df before_df plot(:presInBlock, :rt_mean;  palette = cpal, group=:condition, ribbon=:rt_sem, linewidth=3, kwargs...)
         @df after_df plot!(:presInBlock, :rt_mean;  palette = cpal, group=:condition, ribbon=:rt_sem, linewidth=3, kwargs..., label="")
         #plot!([-0.5, 0.5, 0.5, -0.5], [-1, -1, 1, 1], seriestype=:shape, alpha = 0.6, linewidth = 0, color=:grey, fillstyle = :/, label = "")
-
+    elseif occursin("pmodel", stat)
+        if stat == "QL_pmodel"
+            @df before_df plot(:presInBlock, :QL_pmodel_mean;  palette = cpal, group=:condition, ribbon=:QL_pmodel_sem, linewidth=3, kwargs...)
+            @df after_df plot!(:presInBlock, :QL_pmodel_mean;  palette = cpal, group=:condition, ribbon=:QL_pmodel_sem, linewidth=3, kwargs..., label="")
+        elseif stat == "PL_pmodel"
+            @df before_df plot(:presInBlock, :PL_pmodel_mean;  palette = cpal, group=:condition, ribbon=:PL_pmodel_sem, linewidth=3, kwargs...)
+            @df after_df plot!(:presInBlock, :PL_pmodel_mean;  palette = cpal, group=:condition, ribbon=:PL_pmodel_sem, linewidth=3, kwargs..., label="")
+        elseif stat == "SI_pmodel"
+            @df before_df plot(:presInBlock, :SI_pmodel_mean;  palette = cpal, group=:condition, ribbon=:SI_pmodel_sem, linewidth=3, kwargs...)
+            @df after_df plot!(:presInBlock, :SI_pmodel_mean;  palette = cpal, group=:condition, ribbon=:SI_pmodel_sem, linewidth=3, kwargs..., label="")
+        end
     end
 end
 

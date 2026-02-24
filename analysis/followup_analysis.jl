@@ -1,10 +1,11 @@
 using CSV, DataFrames, StatsPlots, StatsFuns
 include("preprocessing.jl")
 include("stats_plots_funs.jl")
-include("/Users/sami/PhD/Model_Tasks_Data/Data/WMM/pipeline/utils.jl")
+include("utils.jl")
+include("memory_analysis.jl")
 
 ## Load data
-folder = "WMM/RAW_FU"
+folder = "data/additional_study"
 flist = filter(x -> occursin(".csv", x), readdir(folder))
 
 df = DataFrame()
@@ -53,6 +54,98 @@ plot!(res.clusters[1], 0.95 .* ones(length(res.clusters[1])), linewidth=5, label
 ## Recurence effect (explo)
 grp_plot(grpstats1[grpstats1.condition .> 0,:], "explo", "false", [1,2]; xlims=(-3, 9), xticks=([-2,0,1,  3, 5,7, 9], [-3,-1,1, 3, 5,7, 9]), ylims=(0, 0.3), yticks=0:0.2:1, label="", xlabel="Stimulus presentations", ylabel="Prop. non perseverative incorrect choice", size=(500, 500),tickfontsize=14, labelfontsize=20, background_color=:transparent, foreground_color=:black)
 #savefig("WMM/Figures/model_free/expe2_recurrence_explo.pdf")
+
+
+## Memory effect at the strategy level 
+df_mem = copy(df_env1)
+group_level_mem!(df_mem, 2)
+
+validIdx = df_mem.blockNum .> 1
+for i in findall(validIdx)
+    prevBlock = df_mem.blockNum[i] - 1
+    stim = df_mem.stimulus[i]
+    prevIdx = findfirst((df_mem.blockNum .== prevBlock) .* (df_mem.stimulus .== stim))
+    validIdx[i] = (df_mem.condition[prevIdx] == 1) * (df_mem.condition[i] == 1)
+end
+gdf = groupby(df_mem[validIdx,:], [:subject, :evForRec, :presInBlock, :consistent])
+summary_sub = combine(gdf, :congruentDiff => mean => :congruentDiff)
+
+
+gdf = groupby(summary_sub, [:evForRec, :presInBlock, :consistent])
+summary_mem = combine(gdf, :congruentDiff => mean, :congruentDiff => sem)
+
+
+summary_mem = summary_mem[.!isnan.(summary_mem.congruentDiff_sem),:]
+##
+@df summary_mem[summary_mem.consistent .== 1, :] plot(:presInBlock, :congruentDiff_mean, ribbon=:congruentDiff_sem, group=:evForRec, linewidth=3, xlim=(0,12),legend_title="Feedback", label=["Negative" "Positive"], xlabel="Position of feedback in episode\n(presentation # from rule change)", ylabel="Δ choice as recurrent rule for other stims", size=(500, 500), dpi=300, background_color=:transparent)
+
+hline!([0.0], label="", color=:black, linewidth=3, linestyle=:dash)
+
+
+## Statistical Significance (cluster based permutation test) 
+
+uniqueSubs = unique(summary_sub.subject)
+X = fill(NaN, length(uniqueSubs), 12)
+for i in eachindex(uniqueSubs)
+    for j = 1:12
+        sPos = findfirst((summary_sub.subject .== uniqueSubs[i]) .* (summary_sub.presInBlock .== j) .* (summary_sub.evForRec .== 1.0) .* (summary_sub.consistent .== 0.0))
+        sNeg = findfirst((summary_sub.subject .== uniqueSubs[i]) .* (summary_sub.presInBlock .== j) .* (summary_sub.evForRec .== 0.0) .* (summary_sub.consistent .== 0.0))
+        if !isnothing(sPos) && !isnothing(sNeg)
+            X[i, j] = summary_sub.congruentDiff[sPos] - summary_sub.congruentDiff[sNeg]
+        end
+    end
+end
+
+res = cluster_perm_test(X; niter=1e5)
+# For consistent : cluster = [1], pval = 0.0272
+
+plot!([-0.5, 0.5] .+ res.clusters[1], 0.07 .* ones(length(res.clusters[1]) + 1), linewidth=5, label="", color = StatsPlots.palette(:auto)[1], alpha=0.5) 
+
+## Merge with first dataset 
+sumdf = vcat(sumdf1, summary_sub)
+gdf = groupby(sumdf, [:evForRec, :presInBlock, :consistent])
+summary_mem = combine(gdf, :congruentDiff => mean, :congruentDiff => sem)
+
+
+summary_mem = summary_mem[.!isnan.(summary_mem.congruentDiff_sem),:]
+
+@df summary_mem[summary_mem.consistent .== 0, :] plot(:presInBlock, :congruentDiff_mean, ribbon=:congruentDiff_sem, group=:evForRec, linewidth=3, xlim=(0,12),ylims=(-0.15, 0.15), legend_title="Feedback", label=["Negative" "Positive"], xlabel="Position of feedback in episode\n(presentation # from rule change)", ylabel="Δ choice as recurrent rule for other stims", size=(500, 500), dpi=300, background_color=:transparent)
+
+hline!([0.0], label="", color=:black, linewidth=3, linestyle=:dash)
+
+## Statistical Significance (cluster based permutation test) 
+consist = 0.0 # Do the stats for consistent (1) or inconsistent (0) associations
+uniqueSubs = unique(sumdf.subject)
+X = fill(NaN, length(uniqueSubs), 12)
+Xpos = fill(NaN, length(uniqueSubs), 12)
+Xneg = fill(NaN, length(uniqueSubs), 12)
+
+for i in eachindex(uniqueSubs)
+    for j = 1:12
+        sPos = findfirst((sumdf.subject .== uniqueSubs[i]) .* (sumdf.presInBlock .== j) .* (sumdf.evForRec .== 1.0) .* (sumdf.consistent .== consist))
+        sNeg = findfirst((sumdf.subject .== uniqueSubs[i]) .* (sumdf.presInBlock .== j) .* (sumdf.evForRec .== 0.0) .* (sumdf.consistent .== consist))
+        if !isnothing(sPos) && !isnothing(sNeg)
+            X[i, j] = sumdf.congruentDiff[sPos] - sumdf.congruentDiff[sNeg]
+        end
+        if !isnothing(sPos)
+            Xpos[i, j] = sumdf.congruentDiff[sPos]
+        end
+         if !isnothing(sNeg)
+            Xneg[i, j] = sumdf.congruentDiff[sNeg]
+        end
+    end
+end
+
+res = cluster_perm_test(X; niter=1e5)
+resNeg = cluster_perm_test(Xneg; niter=1e5)
+resPos = cluster_perm_test(Xpos; niter=1e5)
+# For consistent diff : cluster = [1, 2, 3], pval < 1e-5
+# For consistent neg : cluster = [1, 2], pval < 1e-5
+
+# plot!(res.clusters[1], 0.07 .* ones(length(res.clusters[1])), linewidth=5, label="", color = StatsPlots.palette(:auto)[2], alpha=0.5) 
+# plot!(resNeg.clusters[1], 0.1 .* ones(length(resNeg.clusters[1])), linewidth=5, label="", color = StatsPlots.palette(:auto)[1], alpha=0.5) 
+
+
 ## Environment 2 
 df_env2 = DataFrame(envdf[[en.task[1] == "task2" for en in envdf]])
 df_env2[!, :isStable] = falses(nrow(df_env2)) # Re-code stable associations from rule change
