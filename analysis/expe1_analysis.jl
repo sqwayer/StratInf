@@ -140,6 +140,57 @@ dotplot!([1], X[:,1], bar_width=0.3,color=:grey, msw=0, label="")
 scatter!([1], [mean(X[:,1])], yerror = [sem(X[:,1])],color=StatsPlots.palette(:Dark2)[4], msc=:black, markershape=:circle, markerstrokewidth=5, markersize=0, label="")
 
 
+## Direct comparison on successive trials for stable associations around rule change
+
+firstStableIdx = findall((df_env1.stableAS) .* (df_env1.presInBlock .== 1) .* (df_env1.condition .== 3)) # find first presentation of stable stim after partial rule change
+
+D = DataFrame(subject = df_env1.subject[firstStableIdx], tvt_1 = zeros(length(firstStableIdx)), t_1vt_2 = zeros(length(firstStableIdx)), fb_inbetween = zeros(length(firstStableIdx)))
+
+for i in eachindex(firstStableIdx)
+    idx = firstStableIdx[i]
+    t_1idx = findlast(df_env1.stimulus[1:idx-1] .== df_env1.stimulus[idx]) # find index of last stimulus presentation before rule change
+    t_2idx = findlast(df_env1.stimulus[1:t_1idx-1] .== df_env1.stimulus[idx]) # find index of penultimate stimulus presentation before rule change
+    tp1idx = findfirst(df_env1.stimulus[idx+1:end] .== df_env1.stimulus[idx]) # find index of next stimulus presentation after rule change
+    if !isnothing(t_1idx)
+        D[i,:tvt_1] = df_env1.correct[idx] - df_env1.correct[t_1idx]
+        if t_1idx == idx - 1 # if consecutive
+            D[i,:fb_inbetween] = -1
+        else
+            D[i,:fb_inbetween] = sum(((df_env1.persev[t_1idx + 1 : idx - 1]) .* (.!df_env1.fb[t_1idx + 1 : idx - 1])))
+        end
+    else
+        D[i,:tvt_1] = NaN
+        D[i,:fb_inbetween] = NaN
+    end
+
+    if !isnothing(t_2idx)
+        D[i,:t_1vt_2] = df_env1.correct[t_1idx] - df_env1.correct[t_2idx]
+    else
+        D[i,:t_1vt_2] = NaN
+    end
+
+end
+# Per subject
+gdf = combine(groupby(D, :subject), :tvt_1 => mean, :t_1vt_2 => mean)
+bar([1 2], [mean(gdf.t_1vt_2_mean) mean(gdf.tvt_1_mean)], ylims=(-0.28, 0.22), color=[:white :orange],label=["Pre rule change" "Post vs Pre rule change"])
+@df gdf dotplot!([1 2], [:t_1vt_2_mean, :tvt_1_mean], bar_width=0.3,color=:grey, msw=0,label="")
+scatter!([1, 2], [mean(gdf.t_1vt_2_mean), mean(gdf.tvt_1_mean)], yerror = [sem(gdf.t_1vt_2_mean), sem(gdf.tvt_1_mean)], msc=:black, markershape=:circle, markerstrokewidth=5, markersize=0, label="", xticks=[], ylabel="Performance difference", size=(500, 500), dpi=300, labelfontsize=18, legendfontsize=12, tickfontsize=12, legend_position=:topright)
+##
+gdf = combine(groupby(D, [:subject, :fb_inbetween]), :tvt_1 => mean, :t_1vt_2 => mean)
+sdf = combine(groupby(gdf, :fb_inbetween), :tvt_1_mean => mean => :tvt_1_mean, :tvt_1_mean => sem => :tvt_1_sem, :t_1vt_2_mean => mean => :t_1vt_2_mean, :t_1vt_2_mean => sem => :t_1vt_2_sem)
+
+ggdf = groupby(gdf, :fb_inbetween)
+bar(1:5, [mean(ggdf[i].tvt_1_mean) for i = 1:5], color=:orange, ylims=(-0.25, 0.05), xticks=(1:5, ["Consecutive", 0, 1, 2, 3]), ylabel = "Performance difference", xlabel="# Disconfirmatory feedback\nbetween presentations",label="",size=(500, 500), dpi=300, labelfontsize=18, legendfontsize=12, tickfontsize=12)
+
+scatter!(1:5, [mean(ggdf[i].tvt_1_mean) for i = 1:5], yerror = [sem(ggdf[i].tvt_1_mean) for i = 1:5], msc=:black, markershape=:circle, markerstrokewidth=5, markersize=0, label="")
+
+
+
+# @df sdf[1:5,:] plot(:fb_inbetween, :t_1vt_2_mean, ribbon=:t_1vt_2_sem, label="Pre rule change", ylabel = "Performance difference", xlabel="# Disconfirmatory feedback in between", color=:black, linewidth=3)
+# @df sdf[1:5,:] plot!(:fb_inbetween, :tvt_1_mean, ribbon=:tvt_1_sem, label="Post vs Pre rule change", ylabel = "Performance difference", xlabel="# Disconfirmatory feedback\nbetween presentations", xticks=(-1:3, ["Consecutive", 0, 1, 2, 3]), color=:orange, linewidth=3, size=(500, 500), dpi=300, labelfontsize=18, legendfontsize=12, tickfontsize=12, legend_position=:bottomleft)
+
+
+
 
 ## 2/ Partial learning effect (condition 1 VS 2)
 tmp = df_env1[(0 .< df_env1.condition .<= 3) .* (df_env1.presInBlock .<= 10) .* .!df_env1.isStable ,:] 
